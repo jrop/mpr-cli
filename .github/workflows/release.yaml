@@ -20,3 +20,5 @@ jobs:
         goversion: "1.20.4"
         binary_name: "mpr"
         extra_files: LICENSE README.md
+        md5sum: false
+        sha256sum: false

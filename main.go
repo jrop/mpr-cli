@@ -98,7 +98,7 @@ func main() {
 					})
 				},
 			}
-			cmd.Flags().BoolP("confirm", "c", false, "do not ask for confirmation")
+			cmd.Flags().BoolP("confirm", "c", true, "do not ask for confirmation")
 			return cmd
 		}())
 
@@ -130,7 +130,7 @@ func main() {
 
 		cmd.AddCommand(&cobra.Command{
 			Use:   "update",
-			Short: "Updates all packages",
+			Short: "Updates all packages (runs `git pull`)",
 			Long:  `Updates all packages. This is equivalent to running "git fetch" in each package's directory.`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return runUpdate()
@@ -138,18 +138,8 @@ func main() {
 		})
 
 		cmd.AddCommand(&cobra.Command{
-			Use:   "update-sums <pkg>",
-			Args:  cobra.ExactArgs(1),
-			Short: "Updates the checksums of a package",
-			RunE: func(cmd *cobra.Command, args []string) error {
-				pkgName := args[0]
-				return runUpdateSums(pkgName)
-			},
-		})
-
-		cmd.AddCommand(&cobra.Command{
 			Use:   "update-version <pkg> [new-version]",
-			Short: "Updates the version of a package",
+			Short: "Updates the version of a package in a PKGBUILD file",
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if len(args) < 1 || len(args) > 2 {
 					return fmt.Errorf("expected at 1 or 2 arguments, got %d", len(args))
@@ -175,7 +165,7 @@ func main() {
 
 		cmd.AddCommand(&cobra.Command{
 			Use:   "upgrade",
-			Short: "Upgrades all packages",
+			Short: "Installs newly available versions",
 			Long:  `Upgrades all packages. This is equivalent to running "makedeb ..." in each package's directory.`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				confirm, _ := cmd.Flags().GetBool("confirm")
@@ -330,11 +320,12 @@ func runInstall(args installArgs) error {
 		}
 
 		// ask for confirmation:
-		fmt.Println("Do you want to build the package now? [y/N]")
+		fmt.Print("Do you want to build the package now? [y/N] ")
 		var answer string
 		fmt.Scanln(&answer)
 		if answer != "y" && answer != "Y" {
-			return fmt.Errorf("aborting")
+			os.RemoveAll(mprDir(pkg))
+			os.Exit(1)
 		}
 	}
 
@@ -403,38 +394,6 @@ func runUpdate() error {
 	return nil
 }
 
-func runUpdateSums(pkgName string) error {
-	dir := ""
-	if pkgName == "." {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		dir = cwd
-	} else {
-		dir = mprDir(pkgName)
-	}
-
-	cmd := exec.Command("makedeb", "-g")
-	cmd.Dir = dir
-	outputBytes, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("could not run makedeb -g: %s", err)
-	}
-
-	newSumsVarDecl := strings.TrimSpace(string(outputBytes)) // sha256sums=...
-	sumName := strings.Split(newSumsVarDecl, "=")[0]         // e.g. "sha256sums"
-	sumValue := strings.Split(newSumsVarDecl, "=")[1]        // e.g. "sha256sums"
-
-	pkgbuild := NewPKGBUILD(dir)
-	err = pkgbuild.updateVar(sumName, sumValue)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func runUpdateVersion(pkgName string, newVersion string) error {
 	dir := ""
 	if pkgName == "." {
@@ -462,7 +421,7 @@ func runUpdateVersion(pkgName string, newVersion string) error {
 		return err
 	}
 
-	return runUpdateSums(pkgName)
+	return nil
 }
 
 func runPkgInfo(pkgName string) error {
@@ -645,5 +604,12 @@ func getPackageURL(spec string) string {
 	if matched {
 		return "https://github.com/" + spec
 	}
+
+	// if the spec is ID (case insensitive), assume it's an MPR package:
+	matched, _ = regexp.MatchString(`(?i)^[a-z0-9_-]+$`, spec)
+	if matched {
+		return "https://mpr.makedeb.org/" + spec
+	}
+
 	return spec
 }

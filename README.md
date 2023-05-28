@@ -29,13 +29,47 @@ mpr install mpr.makedeb.org/mpr
 # OR: mpr install mpr.makedeb.org/mpr-bin
 ```
 
-## Workflow Case Study 1: Installing/Updating Packages
+## Usage
 
-TODO...
+At a high-level, these are the commands that you can run to manage your
+packages:
 
-## Workflow Case Study 2: Package Maintainer
+```
+Usage:
+  mpr [flags]
+  mpr [command]
 
-TODO...
+Available Commands:
+  build          Builds a package
+  check-stale    Checks for stale packages
+  clone          Clones a package
+  completion     Generate the autocompletion script for the specified shell
+  each           Runs a command in each package's directory
+  edit           Edits a package's PKGBUILD
+  help           Help about any command
+  info           Shows information about a package
+  install        Installs a package
+  list           Lists all packages
+  outdated       Lists all outdated packages
+  reinstall      Reinstalls a package
+  update         Updates all packages (runs `git pull`)
+  update-version Updates the version of a package in a PKGBUILD file
+  upgrade        Installs newly available versions
+```
+
+The package flow follows `apt` loosely:
+
+1. Install new packages with `mpr install ...`
+2. Fetch updates with `mpr update`
+3. Install the latest available versions of packages with `mpr upgrade`
+
+## `mpr install <package-url> [flags]`
+
+The install command can take a few shorthand package "URLs":
+
+- `mpr install mpr` - installs from https://mpr.makedeb.org/mpr
+- `mpr install user/repo` - installs from https://github.com/user/repo
+- ...all other forms _need_ to be valid URLs to a Git repository
 
 ## License (MIT)
 
