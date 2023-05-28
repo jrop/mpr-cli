@@ -1,3 +1,44 @@
+# mpr-cli
+
+> A CLI for the makedeb Package Repository
+
+Put a compelling blurb here about why this is awesome...
+
+## Installation
+
+**Install from Git**:
+
+```sh
+git clone https://github.com/jrop/mpr-cli
+cd mpr-cli
+make # requires that Go is installed
+sudo cp build/mpr /usr/local/bin/mpr
+```
+
+**Install from MPR**:
+```
+git clone https://mpr.makedeb.org/mpr # or mpr-bin
+# OR: git clone https://mpr.makedeb.org/mpr-bin
+cd mpr      # OR mpr-bin
+makedeb -si # requires that makedeb is installed
+```
+
+**Install from MPR _using_ `mpr-cli`**:
+```
+mpr install mpr.makedeb.org/mpr
+# OR: mpr install mpr.makedeb.org/mpr-bin
+```
+
+## Workflow Case Study 1: Installing/Updating Packages
+
+TODO...
+
+## Workflow Case Study 2: Package Maintainer
+
+TODO...
+
+## License (MIT)
+
 MIT License
 
 Copyright (c) 2023 Jonathan Apodaca <jrapodaca@gmail.com>
