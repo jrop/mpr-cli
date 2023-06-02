@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -10,9 +11,12 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+
+	"golang.org/x/sync/semaphore"
 )
 
 func main() {
@@ -150,6 +154,16 @@ func main() {
 					newVersion = args[1]
 				}
 				return runUpdateVersion(pkgName, newVersion)
+			},
+		})
+
+		cmd.AddCommand(&cobra.Command{
+			Use:   "uninstall <pkg>",
+			Short: "Uninstalls a package",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				pkgName := args[0]
+				return runUninstall(pkgName)
 			},
 		})
 
@@ -382,14 +396,75 @@ func runReinstall(pkgName string) error {
 }
 
 func runUpdate() error {
-	for _, pkg := range listPackages() {
-		fmt.Println("Updating " + pkg + "...")
-		cmd := mkcmd(false, "git", "pull")
-		cmd.Dir = mprDir(pkg)
-		err := cmd.Run()
-		if err != nil {
-			log.Fatal(err)
+	packages := listPackages()
+
+	// create an atomic counter:
+	counter := 0
+	failedPackages := make([]string, 0)
+
+	lastLineLength := 0
+	setLine := func(line string) {
+		line = fmt.Sprintf("(%d/%d) %s", counter, len(packages), line)
+
+		if len(line) < lastLineLength {
+			fmt.Print("\r" + strings.Repeat(" ", lastLineLength))
 		}
+		lastLineLength = len(line)
+
+		fmt.Print("\r" + line)
+	}
+
+	setLine("Updating")
+
+	//
+	// run 10 at a time in parallel:
+	//
+	// create a channel with a capacity of 10:
+
+	ctx := context.TODO()
+	MAX_WORKERS := 10
+	sem := semaphore.NewWeighted(int64(MAX_WORKERS))
+	// sem := make(chan bool, 10)
+
+	for _, pkg := range packages {
+		// acquire a slot:
+		err := sem.Acquire(ctx, 1)
+		if err != nil {
+			panic(err)
+		}
+
+		go func(pkg string) {
+			defer sem.Release(1)
+
+			cmd := exec.Command("git", "pull")
+			cmd.Dir = mprDir(pkg)
+			// kill the command if it takes too long:
+			timer := time.AfterFunc(10*time.Second, func() {
+				if err := cmd.Process.Kill(); err != nil {
+					panic(err)
+				}
+				setLine(fmt.Sprintf("Killed: %s (took too long)", pkg))
+			})
+			_, err := cmd.Output()
+			counter++
+			timer.Stop()
+			if err != nil {
+				setLine(fmt.Sprintf("Killed: %s (took too long)", pkg))
+				failedPackages = append(failedPackages, pkg)
+			}
+			setLine(fmt.Sprintf("Updated %s", pkg))
+		}(pkg)
+	}
+
+	// drain the channel:
+	if err := sem.Acquire(ctx, int64(MAX_WORKERS)); err != nil {
+		return err
+	}
+
+	fmt.Println()
+
+	if len(failedPackages) > 0 {
+		return fmt.Errorf("mpr update failed for some packages: %s", strings.Join(failedPackages, ", "))
 	}
 	return nil
 }
@@ -417,6 +492,28 @@ func runUpdateVersion(pkgName string, newVersion string) error {
 
 	pkgbuild := NewPKGBUILD(dir)
 	err := pkgbuild.updateVar("pkgver", newVersion)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func runUninstall(pkgName string) error {
+	installedPkgs := listPackages()
+	if !stringSliceContainsString(installedPkgs, pkgName) {
+		return fmt.Errorf("package %s is not installed", pkgName)
+	}
+
+	// uninstall the package:
+	cmd := mkcmd(true, "sudo", "apt-get", "remove", pkgName)
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	// remove the mpr directory:
+	err = os.RemoveAll(mprDir(pkgName))
 	if err != nil {
 		return err
 	}
@@ -522,16 +619,40 @@ func installMakedeb() error {
 }
 
 func listPackages() []string {
-	files, err := ioutil.ReadDir(mprDir())
+	// find all sub-directories in the mpr directory that:
+	// 1. Contain a PKGBUILD file
+	// 2. Contain a ".git" directory
+
+	candidateFiles, err := ioutil.ReadDir(mprDir())
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	var packages []string
-	for _, file := range files {
-		if file.IsDir() && file.Name() != "." {
-			packages = append(packages, file.Name())
+	for _, entry := range candidateFiles {
+		// the entry must be a directory:
+		if !entry.IsDir() {
+			continue
 		}
+
+		// the directory must itself contain a PKGBUILD file:
+		if _, err := os.Stat(filepath.Join(mprDir(entry.Name()), "PKGBUILD")); err != nil {
+			continue
+		}
+
+		// the directory must itself contain a .git directory:
+		if _, err := os.Stat(filepath.Join(mprDir(entry.Name()), ".git")); err != nil {
+			continue
+		}
+
+		// now read the PKGBUILD file and check if it contains a "pkgname" variable:
+		pkgbuild := NewPKGBUILD(mprDir(entry.Name()))
+		pkgname, err := pkgbuild.getSingleVariable("pkgname")
+		if err != nil {
+			continue
+		}
+
+		packages = append(packages, pkgname)
 	}
 
 	sort.Strings(packages)
@@ -612,4 +733,13 @@ func getPackageURL(spec string) string {
 	}
 
 	return spec
+}
+
+func stringSliceContainsString(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }

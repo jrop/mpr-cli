@@ -15,6 +15,20 @@ import (
 	"time"
 )
 
+func dbg[T any](t T, msgs ...string) T {
+	// get the stack frame of the caller:
+	pc, _, _, _ := runtime.Caller(1)
+	f := runtime.FuncForPC(pc)
+
+	if len(msgs) == 0 {
+		fmt.Printf("%+v (%s)\n", t, f.Name())
+	} else {
+		fmt.Printf("%+v: %+v (%s)\n", msgs, t, f.Name())
+	}
+
+	return t
+}
+
 //go:embed pkgbuild-*.sh
 var pkgbuildScripts embed.FS
 
@@ -211,40 +225,55 @@ func (p *PKGBUILD) updateVar(varName string, newValue string) error { // {{{
 	}
 
 	varPrefixEnd := varPrefixStart + len(varPrefix)
+	start := varPrefixEnd
+
+	if source[varPrefixStart:varPrefixEnd] != varPrefix {
+		panic(fmt.Sprintf("this should never happen: got %s", source[varPrefixStart:varPrefixEnd]))
+	}
 
 	// 1. if next char is ', find the matching ' and that is the end
 	// 2. if next char is ", find the matching " and that is the end
 	// 2. if next char is (, find the matching ) and that is the end
 	// 3. the end is the first whitespace after the = sign
 
-	varEnd := varPrefixEnd
-	if source[varPrefixEnd] == '\'' {
+	varEnd := start
+	if source[start] == '\'' {
 		// find the matching ', skipping over escape sequences:
 		for {
-			varEnd = strings.Index(source[varEnd+1:], "'") + varEnd + 1
+			varEnd = strings.Index(source[varEnd+1:], "'") + varEnd + 2
 			if source[varEnd-1] != '\\' {
 				break
 			}
 			varEnd++
 		}
-	} else if source[varPrefixEnd] == '"' {
+	} else if source[start] == '"' {
 		// find the matching ", skipping over escape sequences:
 		for {
-			varEnd = strings.Index(source[varEnd+1:], "\"") + varEnd + 1
+			varEnd = strings.Index(source[varEnd+1:], "\"") + varEnd + 2
 			if source[varEnd-1] != '\\' {
 				break
 			}
 			varEnd++
 		}
-	} else if source[varPrefixEnd] == '(' {
+	} else if source[start] == '(' {
 		// find the matching ):
-		varEnd = strings.Index(source[varPrefixEnd+1:], ")") + varPrefixEnd + 2
+		varEnd = strings.Index(source[start:], ")") + start + 1
 	} else {
-		varEnd = strings.Index(source[varPrefixEnd+1:], " ") + varPrefixEnd + 2
+		idx := strings.Index(source[start:], " ")
+		if idx == -1 {
+			idx = strings.Index(source[start:], "\t")
+		}
+		if idx == -1 {
+			idx = strings.Index(source[start:], "\n")
+		}
+		if idx == -1 {
+			idx = len(source[start:])
+		}
+		varEnd = start + idx
 	}
 
 	// replace the variable:
-	source = source[:varPrefixEnd] + newValue + source[varEnd:]
+	source = source[:start] + newValue + source[varEnd:]
 	err = p.writeContents(source)
 	if err != nil {
 		return err
