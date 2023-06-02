@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fatih/color"
@@ -215,45 +217,93 @@ func runBuild(pkgName string) error {
 }
 
 func runCheckStale() error {
-	for _, fullPkgName := range listPackages() {
-		fmt.Println("Checking " + fullPkgName + "...")
+	packages := listPackages()
+	var counter int64 = 0
 
-		printPkgMessage := func(msg ...any) {
-			args := make([]any, len(msg)+1)
-			args[0] = "=>"
-			copy(args[1:], msg)
-			fmt.Println(args...)
-			fmt.Println()
+	type pkgInfo struct {
+		name    string
+		version string
+		newest  string
+	}
+	type pkgError struct {
+		name string
+		err  error
+	}
+	mux := sync.Mutex{}
+	updatablePackages := make([]pkgInfo, 0)
+	pkgWithErrors := make([]pkgError, 0)
+
+	_setLine := func(line string) {
+		line = fmt.Sprintf("(%d/%d) %s", counter, len(packages), line)
+		mux.Lock()
+		defer mux.Unlock()
+
+		setLine(line)
+	}
+
+	err := doParallel(len(packages), 10, func(i int) {
+		defer atomic.AddInt64(&counter, 1)
+		fullPkgName := packages[i]
+		defer _setLine("Checked " + fullPkgName)
+
+		addPackageError := func(err error) {
+			mux.Lock()
+			defer mux.Unlock()
+			pkgWithErrors = append(pkgWithErrors, pkgError{
+				name: fullPkgName,
+				err:  err,
+			})
 		}
 
 		pkgbuild := NewPKGBUILD(mprDir(fullPkgName))
 		newestVersion, err := pkgbuild.getLatestRepologyPkgVersion()
 		if err != nil {
-			printPkgMessage(err)
-			continue
+			addPackageError(err)
+			return
 		}
 		if newestVersion == "SKIP" {
-			printPkgMessage("skipping")
-			continue
+			return
 		}
 		pkgver, err := pkgbuild.getSingleVariable("pkgver")
 		if err != nil {
-			printPkgMessage("could not read pkgver variables")
-			continue
+			addPackageError(fmt.Errorf("could not read pkgver variables"))
+			return
 		}
 
 		// remove quotes/single quotes from start/end:
 		pkgver = strings.Trim(pkgver, "\"")
 		pkgver = strings.Trim(pkgver, "'")
 
+		if newestVersion != pkgver {
+			mux.Lock()
+			updatablePackages = append(updatablePackages, pkgInfo{
+				name:    fullPkgName,
+				version: pkgver,
+				newest:  newestVersion,
+			})
+			mux.Unlock()
+		}
+	})
+	fmt.Println()
+
+	if err != nil {
+		return err
+	}
+	if len(pkgWithErrors) > 0 {
+		msg := ""
+		for _, pkg := range pkgWithErrors {
+			msg += fmt.Sprintf("- %s: %s\n", pkg.name, pkg.err)
+		}
+		return fmt.Errorf("some packages had errors:\n%s", msg)
+	}
+
+	for _, pkg := range updatablePackages {
 		green := color.New(color.FgGreen).SprintFunc()
 		red := color.New(color.FgRed).SprintFunc()
-		if newestVersion != pkgver {
-			fmt.Println(" => current=" + red(pkgver) + ", latest=" + green(newestVersion))
-			fmt.Println()
-		}
+		fmt.Printf("%s: current=%s, latest=%s\n", pkg.name, red(pkg.version), green(pkg.newest))
 	}
-	return nil
+
+	return err
 }
 
 func runClone(packageURL string) error {
@@ -399,69 +449,40 @@ func runUpdate() error {
 	packages := listPackages()
 
 	// create an atomic counter:
-	counter := 0
+	var counter int64 = 0
 	failedPackages := make([]string, 0)
 
-	lastLineLength := 0
-	setLine := func(line string) {
+	_setLine := func(line string) {
 		line = fmt.Sprintf("(%d/%d) %s", counter, len(packages), line)
-
-		if len(line) < lastLineLength {
-			fmt.Print("\r" + strings.Repeat(" ", lastLineLength))
-		}
-		lastLineLength = len(line)
-
-		fmt.Print("\r" + line)
+		setLine(line)
 	}
 
-	setLine("Updating")
-
-	//
-	// run 10 at a time in parallel:
-	//
-	// create a channel with a capacity of 10:
-
-	ctx := context.TODO()
-	MAX_WORKERS := 10
-	sem := semaphore.NewWeighted(int64(MAX_WORKERS))
-	// sem := make(chan bool, 10)
-
-	for _, pkg := range packages {
-		// acquire a slot:
-		err := sem.Acquire(ctx, 1)
-		if err != nil {
-			panic(err)
-		}
-
-		go func(pkg string) {
-			defer sem.Release(1)
-
-			cmd := exec.Command("git", "pull")
-			cmd.Dir = mprDir(pkg)
-			// kill the command if it takes too long:
-			timer := time.AfterFunc(10*time.Second, func() {
-				if err := cmd.Process.Kill(); err != nil {
-					panic(err)
-				}
-				setLine(fmt.Sprintf("Killed: %s (took too long)", pkg))
-			})
-			_, err := cmd.Output()
-			counter++
-			timer.Stop()
-			if err != nil {
-				setLine(fmt.Sprintf("Killed: %s (took too long)", pkg))
-				failedPackages = append(failedPackages, pkg)
+	_setLine("Updating")
+	err := doParallel(len(packages), 10, func(i int) {
+		pkg := packages[i]
+		cmd := exec.Command("git", "pull")
+		cmd.Dir = mprDir(pkg)
+		// kill the command if it takes too long:
+		timer := time.AfterFunc(10*time.Second, func() {
+			if err := cmd.Process.Kill(); err != nil {
+				panic(err)
 			}
-			setLine(fmt.Sprintf("Updated %s", pkg))
-		}(pkg)
-	}
+			_setLine(fmt.Sprintf("Killed: %s (took too long)", pkg))
+		})
+		_, err := cmd.Output()
+		atomic.AddInt64(&counter, 1)
+		timer.Stop()
+		if err != nil {
+			_setLine(fmt.Sprintf("Killed: %s (took too long)", pkg))
+			failedPackages = append(failedPackages, pkg)
+		}
+		_setLine(fmt.Sprintf("Updated %s", pkg))
+	})
+	fmt.Println()
 
-	// drain the channel:
-	if err := sem.Acquire(ctx, int64(MAX_WORKERS)); err != nil {
+	if err != nil {
 		return err
 	}
-
-	fmt.Println()
 
 	if len(failedPackages) > 0 {
 		return fmt.Errorf("mpr update failed for some packages: %s", strings.Join(failedPackages, ", "))
@@ -742,4 +763,33 @@ func stringSliceContainsString(slice []string, str string) bool {
 		}
 	}
 	return false
+}
+
+var setLine_lastLineLength int = 0
+
+func setLine(line string) {
+	if len(line) < setLine_lastLineLength {
+		fmt.Print("\r" + strings.Repeat(" ", setLine_lastLineLength))
+	}
+	setLine_lastLineLength = len(line)
+
+	fmt.Print("\r" + line)
+}
+
+func doParallel(totalIterations int, maxConcurrency int, work func(int)) error {
+	ctx := context.TODO()
+	sem := semaphore.NewWeighted(int64(maxConcurrency))
+
+	for i := 0; i < totalIterations; i++ {
+		if err := sem.Acquire(ctx, 1); err != nil {
+			return err
+		}
+
+		go func(i int) {
+			defer sem.Release(1)
+			work(i)
+		}(i)
+	}
+
+	return sem.Acquire(ctx, int64(maxConcurrency))
 }
