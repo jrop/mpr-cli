@@ -1,0 +1,6 @@
+[submodule "mpr-pkg"]
+	path = mpr-packages/mpr
+	url = mpr@mpr.makedeb.org:mpr
+[submodule "mpr-bin-pkg"]
+	path = mpr-packages/mpr-bin
+	url = mpr@mpr.makedeb.org:mpr-bin
