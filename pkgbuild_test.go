@@ -6,8 +6,11 @@ import (
 
 func TestPKGBUILDUpdateVariable(t *testing.T) {
 	// simple case
-	pkgbuild := NewPKGBUILDFromContents("start=1\npkgname=foo\nend=2")
-	err := pkgbuild.updateVar("pkgname", "bar")
+	pkgbuild, err := NewPKGBUILDFromContents("start=1\npkgname=foo\nend=2")
+	if err != nil {
+		t.Error(err)
+	}
+	err = pkgbuild.updateVar("pkgname", "bar")
 	if err != nil {
 		t.Error(err)
 	}
@@ -33,7 +36,10 @@ func TestPKGBUILDUpdateVariable(t *testing.T) {
 	}
 
 	// replace a case surrounded by single quotes:
-	pkgbuild = NewPKGBUILDFromContents("start=1\npkgname=\"foo\"\nend=2")
+	pkgbuild, err = NewPKGBUILDFromContents("start=1\npkgname=\"foo\"\nend=2")
+	if err != nil {
+		t.Error(err)
+	}
 	err = pkgbuild.updateVar("pkgname", "\"bar\"")
 	if err != nil {
 		t.Error(err)
@@ -47,7 +53,10 @@ func TestPKGBUILDUpdateVariable(t *testing.T) {
 	}
 
 	// replace a case surrounded by double quotes:
-	pkgbuild = NewPKGBUILDFromContents("start=1\npkgname=\"foo\"\nend=2")
+	pkgbuild, err = NewPKGBUILDFromContents("start=1\npkgname=\"foo\"\nend=2")
+	if err != nil {
+		t.Error(err)
+	}
 	err = pkgbuild.updateVar("pkgname", "\"bar\"")
 	if err != nil {
 		t.Error(err)
@@ -61,7 +70,10 @@ func TestPKGBUILDUpdateVariable(t *testing.T) {
 	}
 
 	// replace case surrounded by parentheses
-	pkgbuild = NewPKGBUILDFromContents("start=1\npkgname=(foo)\nend=2")
+	pkgbuild, err = NewPKGBUILDFromContents("start=1\npkgname=(foo)\nend=2")
+	if err != nil {
+		t.Error(err)
+	}
 	err = pkgbuild.updateVar("pkgname", "(bar)")
 	if err != nil {
 		t.Error(err)

@@ -13,6 +13,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// The following gets set with a build flat during compilation (-ldflags "-X
+// main.Version=...")
+var Version string
+
 func main() {
 	cmd := func() *cobra.Command {
 		// create the root cobra command: this is the one we will attach all of the
@@ -20,11 +24,18 @@ func main() {
 		cmd := &cobra.Command{
 			Use: "mpr",
 			RunE: func(cmd *cobra.Command, args []string) error {
+				version, _ := cmd.PersistentFlags().GetBool("version")
+				if version {
+					fmt.Println("mpr version", Version)
+					return nil
+				}
+
 				err := cmd.Help()
 				os.Exit(1)
 				return err
 			},
 		}
+		cmd.PersistentFlags().BoolP("version", "V", false, "print version information and exit")
 
 		cmd.AddCommand(&cobra.Command{
 			Use:   "build <pkg>",

@@ -55,9 +55,14 @@ func NewPKGBUILD(dirPath string) *PKGBUILD {
 // NewPKGBUILDFromContents creates a new PKGBUILD from the given contents. This
 // is useful for when you want to create a PKGBUILD from scratch, or when you
 // want to use this utility in an in-memory fashion.
-func NewPKGBUILDFromContents(contents string) *PKGBUILD {
+func NewPKGBUILDFromContents(contents string) (*PKGBUILD, error) {
+	dirPath, err := os.MkdirTemp(os.TempDir(), "pkgbuild-")
+	if err != nil {
+		return nil, err
+	}
+
 	p := PKGBUILD{
-		dirPath:      "",
+		dirPath:      dirPath,
 		contents:     contents,
 		contentsErr:  nil,
 		contentsOnce: sync.Once{},
@@ -65,7 +70,7 @@ func NewPKGBUILDFromContents(contents string) *PKGBUILD {
 
 	// mark the contents as read so that we don't try to read the file:
 	p.contentsOnce.Do(func() {})
-	return &p
+	return &p, nil
 }
 
 func (p *PKGBUILD) readContents() (string, error) { // {{{
@@ -98,8 +103,13 @@ func (p *PKGBUILD) writeContents(contents string) error { // {{{
 	return nil
 } // }}}
 
+// GetVariables returns a map of all of the variables in the PKGBUILD file. The
+// mechanism for getting these variables assumes that the PKGBUILD script is
+// idempotent, and that it can be run in a temporary directory without any
+// side-effects. This is done by copying the PKGBUILD file to a temporary
+// directory, and then running a script that prints out all of the variables
+// that are set in the PKGBUILD file.
 func (p *PKGBUILD) getVariables() (*map[string][]string, error) { // {{{
-	// TODO: the mechanism by which this gets the variables should use p.readContents()
 	p.allVariablesOnce.Do(func() {
 		tmpDir, err := ioutil.TempDir(".", "tmp-pkgbuild")
 		defer os.RemoveAll(tmpDir)
@@ -156,33 +166,43 @@ func (p *PKGBUILD) getVariables() (*map[string][]string, error) { // {{{
 			vars[parts[0]] = append(vars[parts[0]], parts[1])
 		}
 
-		// Do variable merging to make other operations more simple. That is, if a
-		// variable named `foo_<ARCH>` exists, then merge it with the `foo`
-		// variable. This will make it easier to get the source variable, for
-		// example. We will use runtime.GOARCH to get the architecture of the
-		// current system.
-		arch := runtime.GOARCH
-		for name, val := range vars {
-			if !strings.HasSuffix(name, "_"+arch) {
-				continue
-			}
-
-			baseName := strings.TrimSuffix(name, "_"+arch)
-
-			// if vars[baseName] doesn't exist, then create it:
-			if _, ok := vars[baseName]; !ok {
-				vars[baseName] = make([]string, 0)
-			}
-
-			// overwrite the baseName variable with the arch-specific one:
-			vars[baseName] = append(vars[baseName], val...)
-		}
-
 		p.allVariables = &vars
 		p.allVariablesErr = nil
 	})
 
 	return p.allVariables, p.allVariablesErr
+} // }}}
+
+func (p *PKGBUILD) getVariablesMerged() (*map[string][]string, error) { // {{{
+	varsAddr, err := p.getVariables()
+	if err != nil {
+		return nil, err
+	}
+	vars := *varsAddr
+
+	// Do variable merging to make other operations more simple. That is, if a
+	// variable named `foo_<ARCH>` exists, then merge it with the `foo`
+	// variable. This will make it easier to get the source variable, for
+	// example. We will use runtime.GOARCH to get the architecture of the
+	// current system.
+	arch := runtime.GOARCH
+	for name, val := range vars {
+		if !strings.HasSuffix(name, "_"+arch) {
+			continue
+		}
+
+		baseName := strings.TrimSuffix(name, "_"+arch)
+
+		// if vars[baseName] doesn't exist, then create it:
+		if _, ok := vars[baseName]; !ok {
+			vars[baseName] = make([]string, 0)
+		}
+
+		// overwrite the baseName variable with the arch-specific one:
+		vars[baseName] = append(vars[baseName], val...)
+	}
+
+	return &vars, nil
 } // }}}
 
 func (p *PKGBUILD) getVariable(name string) ([]string, error) { // {{{
