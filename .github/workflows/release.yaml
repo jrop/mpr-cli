@@ -19,6 +19,7 @@ jobs:
         goarch: ${{ matrix.goarch }}
         goversion: "1.20.4"
         binary_name: "mpr"
+        ldflags: '-X main.Version=${{ github.event.release.tag_name }}'
         extra_files: LICENSE README.md
         md5sum: false
         sha256sum: false
