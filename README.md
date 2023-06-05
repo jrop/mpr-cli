@@ -6,6 +6,12 @@ Put a compelling blurb here about why this is awesome...
 
 ## Installation
 
+**Install Script**:
+
+```sh
+curl -sL https://raw.githubusercontent.com/jrop/mpr-cli/main/install.sh | bash
+```
+
 **Install from Git**:
 
 ```sh
@@ -51,10 +57,18 @@ Available Commands:
   install        Installs a package
   list           Lists all packages
   outdated       Lists all outdated packages
+  recompute-sums Updates the checksums of a package
   reinstall      Reinstalls a package
-  update         Updates all packages (runs `git pull`)
+  uninstall      Uninstalls a package
+  update         Updates all/specified packages (runs `git pull`)
   update-version Updates the version of a package in a PKGBUILD file
   upgrade        Installs newly available versions
+
+Flags:
+  -h, --help      help for mpr
+  -V, --version   print version information and exit
+
+Use "mpr [command] --help" for more information about a command.
 ```
 
 The package flow follows `apt` loosely:

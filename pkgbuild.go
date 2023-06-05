@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,21 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
-
-func dbg[T any](t T, msgs ...string) T {
-	// get the stack frame of the caller:
-	pc, _, _, _ := runtime.Caller(1)
-	f := runtime.FuncForPC(pc)
-
-	if len(msgs) == 0 {
-		fmt.Printf("%+v (%s)\n", t, f.Name())
-	} else {
-		fmt.Printf("%+v: %+v (%s)\n", msgs, t, f.Name())
-	}
-
-	return t
-}
 
 //go:embed pkgbuild-*.sh
 var pkgbuildScripts embed.FS
@@ -42,7 +30,7 @@ type PKGBUILD struct {
 	allVariablesOnce sync.Once            // ensures that the variables are only read once
 }
 
-type PKGBBUILD_source struct {
+type PKGBUILD_source struct {
 	localName string
 	remoteURL string
 	hash      string
@@ -279,13 +267,7 @@ func (p *PKGBUILD) updateVar(varName string, newValue string) error { // {{{
 		// find the matching ):
 		varEnd = strings.Index(source[start:], ")") + start + 1
 	} else {
-		idx := strings.Index(source[start:], " ")
-		if idx == -1 {
-			idx = strings.Index(source[start:], "\t")
-		}
-		if idx == -1 {
-			idx = strings.Index(source[start:], "\n")
-		}
+		idx := strings.IndexFunc(source[start:], unicode.IsSpace)
 		if idx == -1 {
 			idx = len(source[start:])
 		}
@@ -316,7 +298,7 @@ func (p *PKGBUILD) getHashes() ([]string, error) { // {{{
 	return emptyHashes, nil
 } // }}}
 
-func (p *PKGBUILD) getSources() ([]PKGBBUILD_source, error) { // {{{
+func (p *PKGBUILD) getSources() ([]PKGBUILD_source, error) { // {{{
 	hashesVar, err := p.getHashes()
 	if err != nil {
 		return nil, err
@@ -329,9 +311,9 @@ func (p *PKGBUILD) getSources() ([]PKGBBUILD_source, error) { // {{{
 		return nil, fmt.Errorf("source and hashes variables have different lengths")
 	}
 
-	sources := make([]PKGBBUILD_source, 0)
+	sources := make([]PKGBUILD_source, 0)
 	for idx, sourceSpec := range sourceVar {
-		sourceInfo := PKGBBUILD_source{
+		sourceInfo := PKGBUILD_source{
 			localName: filepath.Base(sourceSpec),
 			remoteURL: sourceSpec,
 			hash:      hashesVar[idx],
@@ -436,4 +418,80 @@ func (p *PKGBUILD) executeFunction(fnName string) error { // {{{
 	}
 
 	return nil
+} // }}}
+
+func (p *PKGBUILD) downloadSources() ([]PKGBUILD_source, error) { // {{{
+	mkerr := func(err error) ([]PKGBUILD_source, error) {
+		return make([]PKGBUILD_source, 0), err
+	}
+	sources, err := p.getSources()
+	if err != nil {
+		return mkerr(err)
+	}
+
+	for _, source := range sources {
+		// parse the URL scheme of remoteURL so we know how to download it
+		parsedRemoteURL, err := url.Parse(source.remoteURL)
+		if err != nil {
+			return mkerr(err)
+		}
+
+		switch parsedRemoteURL.Scheme {
+		case "http", "https":
+			// TODO: convert to this pure Go in the future: {{{
+			// fmt.Printf("Downloading %s\n", source.remoteURL)
+			// resp, err := http.Get(source.remoteURL)
+			// if err != nil {
+			// 	return mkerr(err)
+			// }
+			// defer resp.Body.Close()
+
+			// totalLength := resp.ContentLength
+
+			// localFile, err := os.Create(filepath.Join(p.dirPath, source.localName))
+			// if err != nil {
+			// 	return mkerr(err)
+			// }
+			// defer localFile.Close()
+
+			// _, err = io.Copy(
+			// 	localFile,
+			// 	io.TeeReader(
+			// 		resp.Body,
+			// 		newProgressReader(
+			// 			totalLength,
+			// 			func(progress int64, totalLength int64) {
+			// 				// TODO: print a nice progress bar:
+			// 			},
+			// 		),
+			// 	),
+			// )
+			// if err != nil {
+			// 	return mkerr(err)
+			// }
+			// }}}
+			cmd := exec.Command("curl", "-L", "-o", source.localName, source.remoteURL)
+			cmd.Dir = p.dirPath
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Stdin = os.Stdin
+			err = cmd.Run()
+			if err != nil {
+				return mkerr(err)
+			}
+
+			// TODO: verify the hash of the downloaded file
+
+		case "git", "git+ssh":
+			// TODO
+
+			// Q: How to handle localName?
+
+			// If you want to check out a specific commit, you would put the commit
+			// hash in the #commit=<hash> fragment of the source URL, or use a
+			// #tag=<tag> or #branch=<branch> fragment. Here is an example:
+		}
+	}
+
+	return sources, nil
 } // }}}

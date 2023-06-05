@@ -163,24 +163,37 @@ func main() {
 		})
 
 		cmd.AddCommand(&cobra.Command{
-			Use:   "update-version <pkg> [new-version]",
-			Short: "Updates the version of a package in a PKGBUILD file",
-			RunE: func(cmd *cobra.Command, args []string) error {
-				if len(args) < 1 || len(args) > 2 {
-					return fmt.Errorf("expected at 1 or 2 arguments, got %d", len(args))
-				}
-
+			Use:   "recompute-sums <pkg>",
+			Args:  cobra.ExactArgs(1),
+			Short: "Updates the checksums of a package",
+			Run: func(cmd *cobra.Command, args []string) {
+				pkgName := args[0]
 				runFallibleCommand(func() error {
-					pkgName := args[0]
-					newVersion := ""
-					if len(args) == 2 {
-						newVersion = args[1]
-					}
-					return runUpdateVersion(pkgName, newVersion)
+					return runRecomputeSums(pkgName)
 				})
-				return nil
 			},
 		})
+
+		cmd.AddCommand(func() *cobra.Command {
+			cmd := cobra.Command{
+				Use:   "update-version <pkg> [new-version]",
+				Short: "Updates the version of a package in a PKGBUILD file",
+				RunE: func(cmd *cobra.Command, args []string) error {
+					if len(args) != 1 {
+						return fmt.Errorf("expected at 1 argument, got %d", len(args))
+					}
+
+					runFallibleCommand(func() error {
+						pkgName := args[0]
+						newVersion, _ := cmd.Flags().GetString("version")
+						return runUpdateVersion(pkgName, newVersion)
+					})
+					return nil
+				},
+			}
+			cmd.PersistentFlags().StringP("version", "v", "", "new version")
+			return &cmd
+		}())
 
 		cmd.AddCommand(&cobra.Command{
 			Use:   "uninstall <pkg>",

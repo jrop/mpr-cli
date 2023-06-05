@@ -86,3 +86,45 @@ func TestPKGBUILDUpdateVariable(t *testing.T) {
 		t.Errorf("Expected pkgname to be '(bar)', got '%s'", pkgname)
 	}
 }
+
+func TestRealWorldUpdateVar(t *testing.T) {
+	pkgbuildSource := `pkgname=nerd-fonts-fira-code-bin
+repology_pkgname=fonts:nerd-fonts
+pkgver=3.0.1
+pkgrel=4
+pkgdesc='Iconic font aggregator, collection, & patcher. 3,600+ icons, 50+ patched fonts: Hack, Source Code Pro, more. Glyph collections: Font Awesome, Material Design Icons, Octicons, & more'
+arch=(amd64 i386)
+depends=()
+provides=(nerd-fonts-fira-code)
+conflicts=(nerd-fonts-fira-code)
+license=('Unknown')
+url='https://nerdfonts.com/'
+extensions=('zipman')`
+
+	pkgbuild, err := NewPKGBUILDFromContents(pkgbuildSource)
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = pkgbuild.updateVar("pkgver", "3.0.2")
+	if err != nil {
+		t.Error(err)
+	}
+
+	expectedPkgbuildSource := `pkgname=nerd-fonts-fira-code-bin
+repology_pkgname=fonts:nerd-fonts
+pkgver=3.0.2
+pkgrel=4
+pkgdesc='Iconic font aggregator, collection, & patcher. 3,600+ icons, 50+ patched fonts: Hack, Source Code Pro, more. Glyph collections: Font Awesome, Material Design Icons, Octicons, & more'
+arch=(amd64 i386)
+depends=()
+provides=(nerd-fonts-fira-code)
+conflicts=(nerd-fonts-fira-code)
+license=('Unknown')
+url='https://nerdfonts.com/'
+extensions=('zipman')`
+
+	if expectedPkgbuildSource != pkgbuild.contents {
+		t.Errorf("Expected pkgbuild.contents to be:\n%s\n\nGot:\n%s\n", expectedPkgbuildSource, pkgbuild.contents)
+	}
+}

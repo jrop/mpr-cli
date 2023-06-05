@@ -61,7 +61,7 @@ func runCheckStale() error { // {{{
 		setLine(line)
 	}
 
-	err := doParallel(len(packages), 10, func(i int) {
+	err := doParallel(len(packages), 10, func(i int) error {
 		defer atomic.AddInt64(&counter, 1)
 		fullPkgName := packages[i]
 		defer _setLine("Checked " + fullPkgName)
@@ -79,15 +79,15 @@ func runCheckStale() error { // {{{
 		newestVersion, err := pkgbuild.getLatestRepologyPkgVersion()
 		if err != nil {
 			addPackageError(err)
-			return
+			return nil
 		}
 		if newestVersion == "SKIP" {
-			return
+			return nil
 		}
 		pkgver, err := pkgbuild.getSingleVariable("pkgver")
 		if err != nil {
 			addPackageError(fmt.Errorf("could not read pkgver variables"))
-			return
+			return nil
 		}
 
 		// remove quotes/single quotes from start/end:
@@ -103,6 +103,8 @@ func runCheckStale() error { // {{{
 			})
 			mux.Unlock()
 		}
+
+		return nil
 	})
 	fmt.Println()
 
@@ -259,6 +261,38 @@ func runOutdated() error { // {{{
 	return nil
 } // }}}
 
+func runRecomputeSums(pkgName string) error { // {{{
+	dir := ""
+	if pkgName == "." {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		dir = cwd
+	} else {
+		dir = mprDir(pkgName)
+	}
+
+	cmd := exec.Command("makedeb", "-g")
+	cmd.Dir = dir
+	outputBytes, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("could not run makedeb -g: %s", err)
+	}
+
+	newSumsVarDecl := strings.TrimSpace(string(outputBytes)) // sha256sums=...
+	sumName := strings.Split(newSumsVarDecl, "=")[0]         // e.g. "sha256sums"
+	sumValue := strings.Split(newSumsVarDecl, "=")[1]        // e.g. "sha256sums"
+
+	pkgbuild := NewPKGBUILD(dir)
+	err = pkgbuild.updateVar(sumName, sumValue)
+	if err != nil {
+		return err
+	}
+
+	return nil
+} // }}}
+
 func runReinstall(pkgName string) error { // {{{
 	cmd := mkcmd(true, "makedeb", "-si")
 	cmd.Dir = mprDir(pkgName)
@@ -288,7 +322,7 @@ func runUpdate(packagesToUpdate []string) error { // {{{
 	}
 
 	_setLine("Updating")
-	err := doParallel(len(packages), 10, func(i int) {
+	err := doParallel(len(packages), 10, func(i int) error {
 		pkg := packages[i]
 		cmd := exec.Command("git", "pull")
 		cmd.Dir = mprDir(pkg)
@@ -307,6 +341,8 @@ func runUpdate(packagesToUpdate []string) error { // {{{
 			failedPackages = append(failedPackages, pkg)
 		}
 		_setLine(fmt.Sprintf("Updated %s", pkg))
+
+		return nil
 	})
 	fmt.Println()
 
@@ -347,7 +383,7 @@ func runUpdateVersion(pkgName string, newVersion string) error { // {{{
 		return err
 	}
 
-	return nil
+	return runRecomputeSums(pkgName)
 } // }}}
 
 func runUninstall(pkgName string) error { // {{{
