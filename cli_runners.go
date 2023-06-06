@@ -280,14 +280,13 @@ func runRecomputeSums(pkgName string) error { // {{{
 		return fmt.Errorf("could not run makedeb -g: %s", err)
 	}
 
-	newSumsVarDecl := strings.TrimSpace(string(outputBytes)) // sha256sums=...
-	sumName := strings.Split(newSumsVarDecl, "=")[0]         // e.g. "sha256sums"
-	sumValue := strings.Split(newSumsVarDecl, "=")[1]        // e.g. "sha256sums"
-
+	varsToReplace := parseMakedebG(outputBytes)
 	pkgbuild := NewPKGBUILD(dir)
-	err = pkgbuild.updateVar(sumName, sumValue)
-	if err != nil {
-		return err
+	for varName, varValue := range varsToReplace {
+		err = pkgbuild.updateVar(varName, varValue)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -353,7 +352,9 @@ func runUpdate(packagesToUpdate []string) error { // {{{
 	if len(failedPackages) > 0 {
 		return fmt.Errorf("mpr update failed for some packages: %s", strings.Join(failedPackages, ", "))
 	}
-	return nil
+
+	fmt.Println("Checking for outdated packages...")
+	return runOutdated()
 } // }}}
 
 func runUpdateVersion(pkgName string, newVersion string) error { // {{{
