@@ -9,10 +9,11 @@ import (
 // used to get the updated hashes of the sources. The output of `makedeb -g`
 // looks like this:
 //
-//     $ makedeb -g
-//     somevar1=somevalue1
-//     somevar2=somevalue2
-//     somevar3=somevalue3
+//	$ makedeb -g
+//	somevar1=somevalue1
+//	somevar2=somevalue2
+//	somevar3=somevalue3
+//
 // We need to get each new var declaration, e.g. "sha256sums=..." from the
 // output, and there may be multiple. Each declaration starts at the beginning
 // of a line, and is followed by an equals sign

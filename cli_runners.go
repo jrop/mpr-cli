@@ -25,6 +25,12 @@ type installArgs struct {
 	confirm    bool
 }
 
+type updateArgs struct {
+	packagesToUpdate []string
+	upgrade          bool
+	confirm          bool
+}
+
 type upgradeArgs struct {
 	packages []string
 	confirm  bool
@@ -37,7 +43,10 @@ func runBuild(pkgName string) error { // {{{
 } // }}}
 
 func runCheckStale() error { // {{{
-	packages := listPackages()
+	packages, err := listPackages()
+	if err != nil {
+		return err
+	}
 	var counter int64 = 0
 
 	type pkgInfo struct {
@@ -61,7 +70,7 @@ func runCheckStale() error { // {{{
 		setLine(line)
 	}
 
-	err := doParallel(len(packages), 10, func(i int) error {
+	err = doParallel(len(packages), 10, func(i int) error {
 		defer atomic.AddInt64(&counter, 1)
 		fullPkgName := packages[i]
 		defer _setLine("Checked " + fullPkgName)
@@ -136,7 +145,11 @@ func runClone(packageURL string) error { // {{{
 	}
 	pkg = strings.TrimSuffix(pkg, ".git")
 
-	for _, existingPkg := range listPackages() {
+	packages, err := listPackages()
+	if err != nil {
+		return err
+	}
+	for _, existingPkg := range packages {
 		if existingPkg == pkg {
 			fmt.Println("package already exists")
 			os.Exit(1)
@@ -144,13 +157,19 @@ func runClone(packageURL string) error { // {{{
 	}
 	cmd := mkcmd(true, "git", "clone", url, pkg)
 	if err := cmd.Run(); err != nil {
+		// clean up a botched clone:
+		os.RemoveAll(mprDir(pkg))
 		return err
 	}
 	return nil
 } // }}}
 
 func runEach(args []string) error { // {{{
-	for _, pkg := range listPackages() {
+	packages, err := listPackages()
+	if err != nil {
+		return err
+	}
+	for _, pkg := range packages {
 		fmt.Println("=> " + pkg)
 		cmd := mkcmd(true, args[0], args[1:]...)
 		cmd.Dir = mprDir(pkg)
@@ -238,7 +257,11 @@ func runInstall(args installArgs) error { // {{{
 } // }}}
 
 func runList() error { // {{{
-	for _, pkg := range listPackages() {
+	packages, err := listPackages()
+	if err != nil {
+		return err
+	}
+	for _, pkg := range packages {
 		fmt.Println(pkg)
 	}
 	return nil
@@ -246,7 +269,11 @@ func runList() error { // {{{
 
 func runOutdated() error { // {{{
 	var outdatedPkgs []string
-	for _, pkg := range listPackages() {
+	packages, err := listPackages()
+	if err != nil {
+		return err
+	}
+	for _, pkg := range packages {
 		behind, err := isBehind(pkg)
 		if err != nil {
 			return err
@@ -298,17 +325,20 @@ func runReinstall(pkgName string) error { // {{{
 	return cmd.Run()
 } // }}}
 
-func runUpdate(packagesToUpdate []string) error { // {{{
-	packages := listPackages()
-	if len(packagesToUpdate) > 0 {
+func runUpdate(args updateArgs) error { // {{{
+	packages, err := listPackages()
+	if err != nil {
+		return err
+	}
+	if len(args.packagesToUpdate) > 0 {
 		// validate that each package in packagesToUpdate exists:
-		for _, pkg := range packagesToUpdate {
+		for _, pkg := range args.packagesToUpdate {
 			installed := stringSliceContainsString(packages, pkg)
 			if !installed {
 				return fmt.Errorf("package not installed: %s", pkg)
 			}
 		}
-		packages = packagesToUpdate
+		packages = args.packagesToUpdate
 	}
 
 	// create an atomic counter:
@@ -321,7 +351,7 @@ func runUpdate(packagesToUpdate []string) error { // {{{
 	}
 
 	_setLine("Updating")
-	err := doParallel(len(packages), 10, func(i int) error {
+	err = doParallel(len(packages), 10, func(i int) error {
 		pkg := packages[i]
 		cmd := exec.Command("git", "pull")
 		cmd.Dir = mprDir(pkg)
@@ -353,8 +383,15 @@ func runUpdate(packagesToUpdate []string) error { // {{{
 		return fmt.Errorf("mpr update failed for some packages: %s", strings.Join(failedPackages, ", "))
 	}
 
-	fmt.Println("Checking for outdated packages...")
-	return runOutdated()
+	if args.upgrade {
+		return runUpgrade(upgradeArgs{
+			packages: args.packagesToUpdate,
+			confirm:  args.confirm,
+		})
+	} else {
+		fmt.Println("Checking for outdated packages...")
+		return runOutdated()
+	}
 } // }}}
 
 func runUpdateVersion(pkgName string, newVersion string) error { // {{{
@@ -388,15 +425,17 @@ func runUpdateVersion(pkgName string, newVersion string) error { // {{{
 } // }}}
 
 func runUninstall(pkgName string) error { // {{{
-	installedPkgs := listPackages()
+	installedPkgs, err := listPackages()
+	if err != nil {
+		return err
+	}
 	if !stringSliceContainsString(installedPkgs, pkgName) {
 		return fmt.Errorf("package %s is not installed", pkgName)
 	}
 
 	// uninstall the package:
 	cmd := mkcmd(true, "sudo", "apt-get", "remove", pkgName)
-	err := cmd.Run()
-	if err != nil {
+	if err = cmd.Run(); err != nil {
 		return err
 	}
 
@@ -424,7 +463,10 @@ func runPkgInfo(pkgName string) error { // {{{
 } // }}}
 
 func runUpgrade(args upgradeArgs) error { // {{{
-	packages := listPackages()
+	packages, err := listPackages()
+	if err != nil {
+		return err
+	}
 	if len(args.packages) > 0 {
 		for _, pkg := range args.packages {
 			installed := stringSliceContainsString(packages, pkg)

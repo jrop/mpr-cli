@@ -119,7 +119,7 @@ func main() {
 					})
 				},
 			}
-			cmd.Flags().BoolP("no-confirm", "c", false, "do not ask for confirmation")
+			cmd.Flags().Bool("no-confirm", false, "do not ask for confirmation")
 			return cmd
 		}())
 
@@ -151,16 +151,28 @@ func main() {
 			},
 		})
 
-		cmd.AddCommand(&cobra.Command{
-			Use:   "update [pkgs]",
-			Short: "Updates all/specified packages (runs `git pull`)",
-			Long:  `Updates all/specified packages. This is equivalent to running "git fetch" in each package's directory.`,
-			Run: func(cmd *cobra.Command, args []string) {
-				runFallibleCommand(func() error {
-					return runUpdate(args)
-				})
-			},
-		})
+		cmd.AddCommand(func() *cobra.Command {
+			cmd := cobra.Command{
+				Use:   "update [pkgs]",
+				Short: "Updates all/specified packages (runs `git pull`)",
+				Long:  `Updates all/specified packages. This is equivalent to running "git fetch" in each package's directory.`,
+				Run: func(cmd *cobra.Command, args []string) {
+					upgrade, _ := cmd.Flags().GetBool("upgrade")
+					noConfirm, _ := cmd.Flags().GetBool("no-confirm")
+
+					runFallibleCommand(func() error {
+						return runUpdate(updateArgs{
+							packagesToUpdate: args,
+							upgrade:          upgrade,
+							confirm:          !noConfirm,
+						})
+					})
+				},
+			}
+			cmd.Flags().BoolP("upgrade", "u", false, "run `upgrade` following an update")
+			cmd.Flags().Bool("no-confirm", false, "do not ask for confirmation")
+			return &cmd
+		}())
 
 		cmd.AddCommand(&cobra.Command{
 			Use:   "recompute-sums <pkg>",
@@ -219,20 +231,24 @@ func main() {
 			},
 		})
 
-		cmd.AddCommand(&cobra.Command{
-			Use:   "upgrade [pkgs]",
-			Short: "Installs newly available versions",
-			Long:  `Upgrades all/selected packages. This is equivalent to running "makedeb ..." in each package's directory.`,
-			Run: func(cmd *cobra.Command, args []string) {
-				runFallibleCommand(func() error {
-					confirm, _ := cmd.Flags().GetBool("confirm")
-					return runUpgrade(upgradeArgs{
-						packages: args,
-						confirm:  confirm,
+		cmd.AddCommand(func() *cobra.Command {
+			cmd := cobra.Command{
+				Use:   "upgrade [pkgs]",
+				Short: "Installs newly available versions",
+				Long:  `Upgrades all/selected packages. This is equivalent to running "makedeb ..." in each package's directory.`,
+				Run: func(cmd *cobra.Command, args []string) {
+					runFallibleCommand(func() error {
+						noConfirm, _ := cmd.Flags().GetBool("no-confirm")
+						return runUpgrade(upgradeArgs{
+							packages: args,
+							confirm:  !noConfirm,
+						})
 					})
-				})
-			},
-		})
+				},
+			}
+			cmd.Flags().Bool("no-confirm", false, "do not ask for confirmation")
+			return &cmd
+		}())
 
 		// return the root command
 		return cmd
@@ -292,17 +308,17 @@ func installMakedeb() error {
 	return nil
 }
 
-func listPackages() []string {
+func listPackages() ([]string, error) {
 	// find all sub-directories in the mpr directory that:
 	// 1. Contain a PKGBUILD file
 	// 2. Contain a ".git" directory
+	packages := make([]string, 0)
 
 	candidateFiles, err := ioutil.ReadDir(mprDir())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		return packages, err
 	}
 
-	var packages []string
 	for _, entry := range candidateFiles {
 		// the entry must be a directory:
 		if !entry.IsDir() {
@@ -330,7 +346,7 @@ func listPackages() []string {
 	}
 
 	sort.Strings(packages)
-	return packages
+	return packages, nil
 }
 
 func getPkgHEADCommitHash(pkg string) (string, error) {
