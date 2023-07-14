@@ -51,6 +51,16 @@ func main() {
 		})
 
 		cmd.AddCommand(&cobra.Command{
+			Use:   "clean [pkgs ...]",
+			Short: "Cleans a package's src/ & pkg/ directories",
+			Run: func(cmd *cobra.Command, args []string) {
+				runFallibleCommand(func() error {
+					return runClean(args)
+				})
+			},
+		})
+
+		cmd.AddCommand(&cobra.Command{
 			Use:   "check-stale",
 			Short: "Checks for stale packages",
 			Long:  `Checks for stale packages. A package is considered stale if it's version is behind repology's record.`,

@@ -37,6 +37,7 @@ type upgradeArgs struct {
 }
 
 func runBuild(pkgName string) error { // {{{
+	fmt.Printf("=> building %s\n", pkgName)
 	cmd := mkcmd(true, "makedeb")
 	cmd.Dir = mprDir(pkgName)
 	return cmd.Run()
@@ -135,6 +136,33 @@ func runCheckStale() error { // {{{
 	}
 
 	return err
+} // }}}
+
+func runClean(packages []string) error { // {{{
+	availablePkgs, err := listPackages()
+	if err != nil {
+		return err
+	}
+
+	if len(packages) == 0 {
+		packages = availablePkgs
+	}
+
+	for _, pkg := range packages {
+		if !stringSliceContainsString(availablePkgs, pkg) {
+			fmt.Printf("package %s does not exist\n", pkg)
+			continue
+		}
+
+		fmt.Printf("=> cleaning %s\n", pkg)
+		cmd := mkcmd(true, "git", "clean", "-fdx")
+		cmd.Dir = mprDir(pkg)
+		if err = cmd.Run(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 } // }}}
 
 func runClone(packageURL string) error { // {{{
