@@ -183,6 +183,7 @@ func runClone(packageURL string) error { // {{{
 			os.Exit(1)
 		}
 	}
+	fmt.Printf("=> cloning %s\n", pkg)
 	cmd := mkcmd(true, "git", "clone", url, pkg)
 	if err := cmd.Run(); err != nil {
 		// clean up a botched clone:
@@ -269,6 +270,7 @@ func runInstall(args installArgs) error { // {{{
 		makedebArgs = append(makedebArgs, "-si")
 	}
 
+	fmt.Printf("=> installing %s\n", pkg)
 	cmd := mkcmd(true, "makedeb", makedebArgs...)
 	cmd.Dir = mprDir(pkg)
 	err = cmd.Run()
@@ -348,6 +350,7 @@ func runRecomputeSums(pkgName string) error { // {{{
 } // }}}
 
 func runReinstall(pkgName string) error { // {{{
+	fmt.Printf("=> reinstalling %s\n", pkgName)
 	cmd := mkcmd(true, "makedeb", "-si")
 	cmd.Dir = mprDir(pkgName)
 	return cmd.Run()
@@ -462,6 +465,7 @@ func runUninstall(pkgName string) error { // {{{
 	}
 
 	// uninstall the package:
+	fmt.Printf("=> uninstalling %s\n", pkgName)
 	cmd := mkcmd(true, "sudo", "apt-get", "remove", pkgName)
 	if err = cmd.Run(); err != nil {
 		return err
@@ -523,6 +527,7 @@ func runUpgrade(args upgradeArgs) error { // {{{
 			makedebArgs = append(makedebArgs, "-si")
 		}
 
+		fmt.Printf("=> upgrading %s\n", pkg)
 		cmd := mkcmd(true, "makedeb", makedebArgs...)
 		cmd.Dir = mprDir(pkg)
 		err = cmd.Run()
