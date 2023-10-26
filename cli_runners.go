@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -126,7 +127,7 @@ func runCheckStale() error { // {{{
 		for _, pkg := range pkgWithErrors {
 			msg += fmt.Sprintf("- %s: %s\n", pkg.name, pkg.err)
 		}
-		return fmt.Errorf("some packages had errors:\n%s", msg)
+		err = fmt.Errorf("some packages had errors:\n%s", msg)
 	}
 
 	for _, pkg := range updatablePackages {
@@ -318,7 +319,7 @@ func runOutdated() error { // {{{
 	return nil
 } // }}}
 
-func runRecomputeSums(pkgName string) error { // {{{
+func runRecomputeSums(pkgName string, edit bool) error { // {{{
 	dir := ""
 	if pkgName == "." {
 		cwd, err := os.Getwd()
@@ -344,6 +345,19 @@ func runRecomputeSums(pkgName string) error { // {{{
 		if err != nil {
 			return err
 		}
+	}
+
+	cmd = exec.Command("makedeb", "--print-srcinfo")
+	cmd.Dir = dir
+	outputBytes, err = cmd.Output()
+	if err != nil {
+		return fmt.Errorf("could not run makedeb --print-srcinfo: %s", err)
+	}
+
+	os.WriteFile(path.Join(dir, ".SRCINFO"), outputBytes, 0)
+
+	if edit {
+		return runEdit(pkgName)
 	}
 
 	return nil
@@ -425,7 +439,7 @@ func runUpdate(args updateArgs) error { // {{{
 	}
 } // }}}
 
-func runUpdateVersion(pkgName string, newVersion string) error { // {{{
+func runUpdateVersion(pkgName string, newVersion string, edit bool) error { // {{{
 	dir := ""
 	if pkgName == "." {
 		cwd, err := os.Getwd()
@@ -452,7 +466,7 @@ func runUpdateVersion(pkgName string, newVersion string) error { // {{{
 		return err
 	}
 
-	return runRecomputeSums(pkgName)
+	return runRecomputeSums(pkgName, edit)
 } // }}}
 
 func runUninstall(pkgName string) error { // {{{

@@ -191,8 +191,10 @@ func main() {
 			Run: func(cmd *cobra.Command, args []string) {
 				pkgName := args[0]
 				runFallibleCommand(func() error {
-					return runRecomputeSums(pkgName)
+					edit, _ := cmd.Flags().GetBool("edit")
+					return runRecomputeSums(pkgName, edit)
 				})
+				cmd.PersistentFlags().BoolP("edit", "e", false, "edit the PKGBUILD after a successful update")
 			},
 		})
 
@@ -208,12 +210,14 @@ func main() {
 					runFallibleCommand(func() error {
 						pkgName := args[0]
 						newVersion, _ := cmd.Flags().GetString("version")
-						return runUpdateVersion(pkgName, newVersion)
+						edit, _ := cmd.Flags().GetBool("edit")
+						return runUpdateVersion(pkgName, newVersion, edit)
 					})
 					return nil
 				},
 			}
 			cmd.PersistentFlags().StringP("version", "v", "", "new version")
+			cmd.PersistentFlags().BoolP("edit", "e", false, "edit the PKGBUILD after a successful update")
 			return &cmd
 		}())
 
