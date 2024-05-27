@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 )
@@ -12,7 +11,7 @@ func updateMakedebInstallReceipt(pkg string) error {
 		return err
 	}
 
-	err = ioutil.WriteFile(mprDir(pkg, ".git", "makedeb-install-receipt"), []byte(currentHash), 0644)
+	err = os.WriteFile(mprDir(pkg, ".git", "makedeb-install-receipt"), []byte(currentHash), 0644)
 	if err != nil {
 		return err
 	}
@@ -20,7 +19,7 @@ func updateMakedebInstallReceipt(pkg string) error {
 }
 
 func readMakedebInstallReceipt(pkg string) (string, error) {
-	currentReceipt, err := ioutil.ReadFile(mprDir(pkg, ".git", "makedeb-install-receipt"))
+	currentReceipt, err := os.ReadFile(mprDir(pkg, ".git", "makedeb-install-receipt"))
 
 	// if the error is "no such file or directory", then the package has never
 	// been installed:

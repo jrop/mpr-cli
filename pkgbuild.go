@@ -4,7 +4,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -63,7 +62,7 @@ func NewPKGBUILDFromContents(contents string) (*PKGBUILD, error) {
 
 func (p *PKGBUILD) readContents() (string, error) { // {{{
 	p.contentsOnce.Do(func() {
-		contents, err := ioutil.ReadFile(filepath.Join(p.dirPath, "PKGBUILD"))
+		contents, err := os.ReadFile(filepath.Join(p.dirPath, "PKGBUILD"))
 		if err != nil {
 			p.contents = ""
 			p.contentsErr = err
@@ -76,7 +75,7 @@ func (p *PKGBUILD) readContents() (string, error) { // {{{
 } // }}}
 
 func (p *PKGBUILD) writeContents(contents string) error { // {{{
-	err := ioutil.WriteFile(filepath.Join(p.dirPath, "PKGBUILD"), []byte(contents), 0644)
+	err := os.WriteFile(filepath.Join(p.dirPath, "PKGBUILD"), []byte(contents), 0644)
 	if err != nil {
 		return err
 	}
@@ -99,7 +98,7 @@ func (p *PKGBUILD) writeContents(contents string) error { // {{{
 // that are set in the PKGBUILD file.
 func (p *PKGBUILD) getVariables() (*map[string][]string, error) { // {{{
 	p.allVariablesOnce.Do(func() {
-		tmpDir, err := ioutil.TempDir(".", "tmp-pkgbuild")
+		tmpDir, err := os.MkdirTemp(".", "tmp-pkgbuild")
 		defer os.RemoveAll(tmpDir)
 
 		contents, err := p.readContents()
@@ -107,7 +106,7 @@ func (p *PKGBUILD) getVariables() (*map[string][]string, error) { // {{{
 			p.allVariablesErr = err
 			return
 		}
-		err = ioutil.WriteFile(filepath.Join(tmpDir, "PKGBUILD"), []byte(contents), 0644)
+		err = os.WriteFile(filepath.Join(tmpDir, "PKGBUILD"), []byte(contents), 0644)
 		if err != nil {
 			p.allVariablesErr = err
 			return
@@ -121,7 +120,7 @@ func (p *PKGBUILD) getVariables() (*map[string][]string, error) { // {{{
 		}
 
 		// write the script to the file
-		err = ioutil.WriteFile(filepath.Join(tmpDir, "pkgbuild-var-printer.sh"), script, 0755)
+		err = os.WriteFile(filepath.Join(tmpDir, "pkgbuild-var-printer.sh"), script, 0755)
 		if err != nil {
 			p.allVariablesErr = err
 			return
@@ -387,7 +386,7 @@ func (p *PKGBUILD) getLatestRepologyPkgVersion() (string, error) { // {{{
 } // }}}
 
 func (p *PKGBUILD) executeFunction(fnName string) error { // {{{
-	tmpScript, err := ioutil.TempFile(p.dirPath, "pkgbuild-fn-executor.sh")
+	tmpScript, err := os.CreateTemp(p.dirPath, "pkgbuild-fn-executor.sh")
 	if err != nil {
 		return err
 	}

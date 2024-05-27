@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -328,7 +327,7 @@ func listPackages() ([]string, error) {
 	// 2. Contain a ".git" directory
 	packages := make([]string, 0)
 
-	candidateFiles, err := ioutil.ReadDir(mprDir())
+	candidateFiles, err := os.ReadDir(mprDir())
 	if err != nil {
 		return packages, err
 	}

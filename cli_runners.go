@@ -72,7 +72,7 @@ func runCheckStale() error { // {{{
 		setLine(line)
 	}
 
-	err = doParallel(len(packages), 10, func(i int) error {
+	err = doParallel(len(packages), 2, func(i int) error {
 		defer atomic.AddInt64(&counter, 1)
 		fullPkgName := packages[i]
 		defer _setLine("Checked " + fullPkgName)
