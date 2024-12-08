@@ -356,7 +356,12 @@ func (p *PKGBUILD) getLatestRepologyPkgVersion() (string, error) { // {{{
 	}
 
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Get("https://repology.org/api/v1/project/" + pkgname)
+	req, err := http.NewRequest("GET", "https://repology.org/api/v1/project/" + pkgname, nil)
+	req.Header.Add("User-Agent", "github.com/jrop/mpr-cli")
+	if err != nil {
+		return "", err
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}

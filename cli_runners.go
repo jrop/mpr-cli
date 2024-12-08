@@ -72,10 +72,8 @@ func runCheckStale() error { // {{{
 		setLine(line)
 	}
 
-	err = doParallel(len(packages), 2, func(i int) error {
-		defer atomic.AddInt64(&counter, 1)
+	for i := range packages {
 		fullPkgName := packages[i]
-		defer _setLine("Checked " + fullPkgName)
 
 		addPackageError := func(err error) {
 			mux.Lock()
@@ -90,15 +88,15 @@ func runCheckStale() error { // {{{
 		newestVersion, err := pkgbuild.getLatestRepologyPkgVersion()
 		if err != nil {
 			addPackageError(err)
-			return nil
+			continue
 		}
 		if newestVersion == "SKIP" {
-			return nil
+			continue
 		}
 		pkgver, err := pkgbuild.getSingleVariable("pkgver")
 		if err != nil {
 			addPackageError(fmt.Errorf("could not read pkgver variables"))
-			return nil
+			continue
 		}
 
 		// remove quotes/single quotes from start/end:
@@ -115,13 +113,12 @@ func runCheckStale() error { // {{{
 			mux.Unlock()
 		}
 
-		return nil
-	})
+		time.Sleep(1100 * time.Millisecond)
+		atomic.AddInt64(&counter, 1)
+		_setLine("Checked " + fullPkgName)
+	}
 	fmt.Println()
 
-	if err != nil {
-		return err
-	}
 	if len(pkgWithErrors) > 0 {
 		msg := ""
 		for _, pkg := range pkgWithErrors {
